@@ -1,0 +1,110 @@
+// var toFlaot = function(img){
+//   return img.divide(250).copyProperties(img)
+// }
+
+var toFloat = function(img) {
+  return img.divide(250).copyProperties(img, img.propertyNames()).set('system:index', img.get('system:index'));};
+
+
+
+// var roi = ee.FeatureCollection("projects/ee-afsara/assets/BSB_DISTRICT_BOUNDARY").filter([target_values]);
+
+var roi = ee.FeatureCollection("projects/prj-amnex-ee-gcp-8001/assets/Guj_Rabi26_Yield_Assets/GJ_District_Bound_v1_20Mar26_42N")//.filter(ee.Filter.eq('District','Banaskantha'));
+
+var ROI = roi
+// Map.centerObject(ROI,9);
+
+Map.addLayer(roi, {}, 'roi')
+
+var roi_ = roi.bounds()
+
+
+// Map.setCenter(87.3,    87.53, 14)
+
+
+var D1=ee.ImageCollection('projects/ee-kandaganesh123/assets/S3_FAPAR_Assets_17Jul26')
+.filter(ee.Filter.eq('RT','RT0'))
+// .filter(ee.Filter.stringStartsWith('Version', 'V1'))
+// .filterDate('2020-01-01','2020-12-31')
+// .filterDate('2021-01-01','2021-12-31')
+// .filterDate('2022-01-01','2022-12-31')
+// .filterDate('2023-01-01','2023-12-31')
+// .filterDate('2024-01-01','2024-12-31')
+.filterDate('2025-01-01','2025-12-31')
+// .filterDate('2026-01-01','2026-12-31')
+            .map(toFloat)
+
+print(D1);
+var D1 = D1.map(function(img){return img.clip(roi)});//.updateMask(Agrimask)
+//print(dist)
+
+
+function addDate (image){
+  var id = image.get('system:time_start')
+  var date = ee.Date(id).format("YYYY-MM-dd")
+  return image.set({'date':date});
+}
+
+
+var collection_refinelee = D1.map(addDate);
+
+print(collection_refinelee, 'collection_refinelee');
+
+var dateList = collection_refinelee.aggregate_array('date').distinct();
+print(dateList);
+
+var orbitList = collection_refinelee.aggregate_array('SENSING_ORBIT_NUMBER').distinct(); 
+// print(orbitList);
+
+
+function createMosaic (date){
+  var images = collection_refinelee.filter(ee.Filter.eq('date', date));
+  return images.mosaic().set({'system:index1':date, 'date':date});
+}
+
+var ic = ee.ImageCollection.fromImages(dateList.map(createMosaic));
+// print(ic, 'ic')
+
+// var mos = ic.mosaic()
+// Map.addLayer(mos,{min: 1000, max: 8000, bands: ['B8', 'B4', 'B3']},'mos');
+
+     
+var doExport = function() {
+  print('Working');
+  var ids = ic.aggregate_array("system:index1");
+  // evaluate() will not block the UI and once the result is available
+  // will be passed-on to the callback function where we will call
+  // Export.image.toDrive()
+  // var dataset1 = ee.ImageCollection("ESA/WorldCover/v200").first();
+  // var Agrimask = dataset1.eq(40).clip(ROI).selfMask()
+  ids.evaluate(function(imageIds) {
+    print('Total number of images', imageIds.length);
+    print('Exporting now... (see Tasks tab)');
+    print('Tip: Use Ctrl+Click/Cmd+Click on tasks to skip confirmation.');
+    for(var i = 0; i < imageIds.length; i++) {
+      
+      // Filter using the image id
+      var image = ee.Image(ic.toList(1, i).get(0))//.mask(Agrimask).selfMask();
+      //var image1 = ee.Image(col.toList(1, i).get(0));
+      // print(image,'img');
+
+      var mappedLayer =Map.addLayer(image,{min: 0.1, max: 0.6}, imageIds[i]); 
+      mappedLayer.setShown(0);// setShown is a boolean so 0 means hide
+      //   Export.image.toDrive({
+      //   image: image .select(['B2','B3','B4','B8','B11']), //.select('ndvi'),//
+      //   region:ROI,
+      //   scale: 10,
+      //   crs: 'EPSG:32645',
+      //   maxPixels:1e13,
+      //   folder: 'WB_Rabi_2025_Opt',
+      //   description: 'Puru_'+ imageIds[i],
+      // });
+      }
+  });
+
+  
+};
+
+print('Click button below to start export');
+var button = ui.Button({label: 'Export', onClick: doExport});
+print(button);
